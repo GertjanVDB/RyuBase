@@ -1,11 +1,18 @@
 import pymongo
 from db import DBRecord
 
-class MongoRecord:
-    def __init__(rec:DBRecord):
-        pass
+from logging import getLogger
+logger = getLogger()
 
-    @staticmethod
-    def read_from_db(course_id):
-        pass
+
+class MongoRecord:
+    def __init__(self, rec:DBRecord):
+        logger.info("Created MongoRecord from DBRecord %s" % rec)
+        
+
+def write_to_mongo(record:MongoRecord):
+    logger.info("Writing to mongodb")
+
+def connect_to_mongo():
+    logger.info("Connecting to mongodb")
 
