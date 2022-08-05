@@ -5,14 +5,30 @@ from logging import getLogger
 from dataclasses import dataclass
 import re
 
-logger = getLogger()
+logger = getLogger("db")
 
 logger.info("Importing DB")
 
-def get_run_by_id(run_id):
-    import mongo
-    mongo.find_run_id(run_id)
-    
+def get_run_by_id(dbrun_id):
+    import db.mongo as mongo
+    mongo_run = mongo.find_run_id(dbrun_id)
+
+def create_run(user_id, user_name):
+    import db.mongo as mongo
+    new_run = mongo.new_run(user_id, user_name)
+    mongo.write_run(new_run)
+
+def create_user(user_id, user_name):
+    import db.mongo as mongo
+    user = DBUser(str(user_id), user_name)
+
+    mongo.new_user(user)
+ 
+@dataclass(repr=True)
+class DBUser:
+    user_id:str
+    user_name:str
+
 @dataclass(repr=True)
 class DBRecord:
     run_id:str
