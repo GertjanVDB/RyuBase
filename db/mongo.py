@@ -1,24 +1,24 @@
 from dataclasses import dataclass, asdict
 from uuid import uuid4
+import pymongo
 from pymongo import MongoClient
-from db import DBRecord, DBRun, DBUser
+from db.data_structures import DBUser, DBUserCollection, DBLevelAttempt
+from enum import Enum
 
-from db.db_exceptions import FailedToConnectError, UserAlreadyExistsError
+from db.db_exceptions import FailedToConnectError, UserAlreadyExistsError, UserDoesNotExistError, \
+    FailedToCreateUserError, CollectionDoesNotExistError
 from logging import getLogger
+
 logger = getLogger("dbmongo")
 
 
-
-class MongoRecord:
-    def __init__(self, rec:DBRecord):
-        logger.info("Created MongoRecord from DBRecord %s" % rec)
-        
-
-def write_to_mongo(record:MongoRecord):    
-    logger.info("Writing to mongodb")
+class DBCollections(Enum):
+    Users = 'UsersDB'
+    LevelAttempts = 'LevelAttemptsDB'
+    UserCollections = 'UserCollectionsDB'
 
 
-def connect_to_mongo()->MongoClient:
+def connect_to_mongo() -> MongoClient:
     logger.info("Connecting to mongodb")
     from os import environ
     mongo_uri = environ.get("DB_RESOURCE")
@@ -27,65 +27,90 @@ def connect_to_mongo()->MongoClient:
 
     return client
 
-def get_user_db():
-    client= connect_to_mongo()
-    db = client.RyuBaseDB.UsersDB
+
+def get_db(collection: DBCollections) -> pymongo.collection.Collection:
+    client = connect_to_mongo()
+    db = client.RyuBaseDB  # type: pymongo.collection.Database
     if db == None:
         raise FailedToConnectError
-    return db
 
-def get_run_db():
-    logger.info("Getting Player runs DB")
-    client= connect_to_mongo()
-    db = client.RyuBaseDB.PlayerRunsDB
-    if db == None:
-        raise FailedToConnectError
-    return db
+    col = db.get_collection(collection.value)
+    return col
 
-def _create_runrecord(mongo_doc):
-    run_obj = DBRun(run_id=mongo_doc.run_id,
-        user_id=mongo_doc.user_id,
-        user_name=mongo_doc.user_name,
-        run_start=mongo_doc.run_start,
-        run_end=mongo_doc.run_end)
-    return run_obj
 
-def new_user(user:DBUser):
-    user_db = get_user_db()
-    existing = list(user_db.find({"user_id":f"{user.user_id}"}))
+# User stuff
+def get_user_by_id(maker_id: str) -> DBUser | None:
+    """
+    Retrieves user data by maker_id
+
+    Args:
+        maker_id: Nintendo maker id
+
+    Returns:
+        DBUser: db user data
+
+    """
+    user_db = get_db(DBCollections.Users)
+    existing = list(user_db.find({"maker_id": f"{maker_id}"}))
     if existing:
-        raise UserAlreadyExistsError
+        user = DBUser.from_dict(existing[0])
+
+        return user
     else:
-        user_db.insert_one(asdict(user))
-        
-    
-
-def get_user(user_id):
-    raise NotImplementedError
+        return None
 
 
-def new_run(user_id, user_name):
-    run_id = uuid4()
-    import datetime
-    run_start = str(datetime.datetime.now())
-    
-    new_run = DBRun(run_id,user_id,user_name,run_start,"")
-    return new_run
+def add_user(user: DBUser) -> None:
+    """
+    Creates a new mongo user
 
-def write_run(run:DBRun):
-    collection = get_run_db()
-    collection.insert_one(asdict(run))
+    Args:
+        user: DB.User
+    Raises:
+        UserAlreadyExistsError: On duplicate user
+        FailedToCreateUserError: If fails for any reason
+    """
+    user_db = get_db(DBCollections.Users)
+    exists = get_user_by_id(user.maker_id)
+
+    if exists:
+        raise UserAlreadyExistsError()
+    else:
+        try:
+            user_db.insert_one(user.as_dict())
+        except Exception as ex:
+            logger.error(ex)
+            raise FailedToCreateUserError(ex)
 
 
-def find_run_id(run_id):
-    logger.info("Looking for id: %s" % run_id)
-    run_db = get_run_db()
-    found = list(run_db.find({'course_id':f"{run_id}"}))
-    
-    logger.info("found: %s" % list(found))
-    logger.info(run_db)
-    # todo: find run by id, return a run record if found
-    if found:
-        return _create_runrecord(found)
-    return found
+# Collection stuff
 
+
+def add_user_collection(user_col: DBUserCollection):
+    logger.info("Creating user collection: %s" % user_col.name)
+    db = get_db(DBCollections.UserCollections)
+    db.insert_one(user_col.as_dict())
+
+
+def get_user_collection_ids(maker_id: str) -> list[str]:
+    logger.info("Getting all collections of user: %s" % maker_id)
+    user = get_user_by_id(maker_id)
+    if not user:
+        raise UserDoesNotExistError()
+    return user.user_collections
+
+
+def get_user_collection(collection_id):
+    logger.info("Getting collection: %s" % collection_id)
+    db = get_db(DBCollections.UserCollections)
+    doc = db.find_one({'collection_id':collection_id})
+    if not doc:
+        raise CollectionDoesNotExistError()
+    return DBUserCollection.from_dict(doc)
+
+
+# Attempt stuff
+
+def add_attempt(attempt: DBLevelAttempt) -> None:
+    collection = get_db(DBCollections.LevelAttempts)
+    collection.insert_one(attempt.as_dict())

@@ -1,14 +1,16 @@
 
-import logging
+from dotenv import load_dotenv
+load_dotenv()
 from logging import getLogger, basicConfig, DEBUG, INFO
-basicConfig(level=DEBUG)
-logger = getLogger()
 
 from flask import Flask
 from flask_restful import Resource, Api
+import ryubase_api
 
-from dotenv import load_dotenv
-load_dotenv()
+basicConfig(level=DEBUG)
+logger = getLogger()
+
+logger.info('App started')
 
 app = Flask(__name__)
 api = Api(app)
@@ -20,11 +22,6 @@ class SiteRoot(Resource):
 
 
 api.add_resource(SiteRoot, '/')
-
-logger.info('App started')
-
-import ryubase_api
-
 
 
 def main():
